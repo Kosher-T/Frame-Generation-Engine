@@ -7,11 +7,15 @@ import os
 # --- CONFIGURATION ---
 IMG_WIDTH = 224
 IMG_HEIGHT = 224
-BATCH_SIZE = 32
+BATCH_SIZE = 32 # Adjust based on your local machine's RAM/VRAM
 
 def create_embedding_model():
     """
     Creates a model based on MobileNetV2 that outputs a 1D embedding vector.
+    
+    This uses a pre-trained model (MobileNetV2) without its final
+    classification layer. Instead, it uses GlobalAveragePooling2D
+    to create a "feature vector" (embedding) for each image.
     """
     # 1. Load MobileNetV2, pre-trained on ImageNet
     #    include_top=False means we DONT want the final classification layer
@@ -49,6 +53,7 @@ def get_image_paths(directory):
 def generate_embeddings_from_directory(model, directory):
     """
     Generates embeddings for all images in a given directory.
+    Uses batch processing to be memory-efficient.
     """
     print(f"\nGenerating embeddings for: {directory}")
     image_paths = get_image_paths(directory)
@@ -64,10 +69,16 @@ def generate_embeddings_from_directory(model, directory):
         batch_imgs = []
         
         for img_path in batch_paths:
-            img = image.load_img(img_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
-            img_array = image.img_to_array(img)
-            batch_imgs.append(img_array)
+            try:
+                img = image.load_img(img_path, target_size=(IMG_HEIGHT, IMG_WIDTH))
+                img_array = image.img_to_array(img)
+                batch_imgs.append(img_array)
+            except Exception as e:
+                print(f"Warning: Could not load image {img_path}. Skipping. Error: {e}")
         
+        if not batch_imgs:
+            continue
+            
         # Predict on the whole batch
         embeddings = model.predict(np.array(batch_imgs))
         all_embeddings.extend(embeddings)
@@ -80,38 +91,42 @@ if __name__ == "__main__":
     # 1. Create the model
     embedding_model = create_embedding_model()
     
-    # 2. Define your data directories
+    # 2. Define your data directories (relative paths for local use)
     GOOD_DATA_DIR = 'data/extracted_frames'
     BAD_DATA_DIR = 'data/drifted_frames'
+    
+    # Check if directories exist
+    if not os.path.exists(GOOD_DATA_DIR):
+        print(f"Error: Good data directory not found at: {GOOD_DATA_DIR}")
+        print("Please check your folder structure.")
+    if not os.path.exists(BAD_DATA_DIR):
+        print(f"Error: Bad data directory not found at: {BAD_DATA_DIR}")
+        print("Please run data_saboteur.py or check your folder structure.")
 
     # 3. Generate the "Baseline" (Good Data)
     #    This is what we'll compare against in production
-    baseline_embeddings = generate_embeddings_from_directory(embedding_model, GOOD_DATA_DIR)
-    
-    if baseline_embeddings is not None:
-        print(f"\nSuccessfully generated {baseline_embeddings.shape[0]} baseline embeddings.")
-        # Save for later use!
-        np.save('baseline_embeddings.npy', baseline_embeddings)
-        print("Baseline embeddings saved to 'baseline_embeddings.npy'")
+    if os.path.exists(GOOD_DATA_DIR):
+        baseline_embeddings = generate_embeddings_from_directory(embedding_model, GOOD_DATA_DIR)
+        
+        if baseline_embeddings is not None and baseline_embeddings.size > 0:
+            print(f"\nSuccessfully generated {baseline_embeddings.shape[0]} baseline embeddings.")
+            # Save for later use!
+            np.save('baseline_embeddings.npy', baseline_embeddings)
+            print("Baseline embeddings saved to 'baseline_embeddings.npy'")
+        else:
+            print("No baseline embeddings were generated.")
 
     # 4. Generate "Drifted" embeddings (Bad Data)
     #    We do this now to prove our concept and find a threshold
-    drifted_embeddings = generate_embeddings_from_directory(embedding_model, BAD_DATA_DIR)
+    if os.path.exists(BAD_DATA_DIR):
+        drifted_embeddings = generate_embeddings_from_directory(embedding_model, BAD_DATA_DIR)
 
-    if drifted_embeddings is not None:
-        print(f"\nSuccessfully generated {drifted_embeddings.shape[0]} drifted embeddings.")
-        # Save for later use!
-        np.save('drifted_embeddings.npy', drifted_embeddings)
-        print("Drifted embeddings saved to 'drifted_embeddings.npy'")
-```eof
-
-### What this script does:
-
-1.  **`create_embedding_model()`**: This is the core. It loads `MobileNetV2` (a powerful, pre-trained CV model) but *chops off the top layer*. It replaces it with a `GlobalAveragePooling2D` layer, which perfectly flattens the multi-dimensional tensor into a 1,280-dimension **vector**. This vector is the "embedding."
-2.  **`generate_embeddings_from_directory()`**: This is a helper function that loops through all your frame folders, loads the images, processes them in batches, and uses the model to predict the embedding for each one.
-3.  **`if __name__ == "__main__"`**:
-    * It creates the embedding model.
-    * It processes your **"Good Data"** (`data/extracted_frames`) to create `baseline_embeddings.npy`. This file is your "ground truth" of what good data looks like.
-    * It processes your **"Bad Data"** (`data/drifted_frames`) to create `drifted_embeddings.npy`. We will use this file in the next step to see if we can spot the difference.
-
-Go ahead and run this. It will take a few minutes, but at the end, you'll have the two `.npy` files that are the entire foundation for your drift detection system. Let me know when you have them!
+        if drifted_embeddings is not None and drifted_embeddings.size > 0:
+            print(f"\nSuccessfully generated {drifted_embeddings.shape[0]} drifted embeddings.")
+            # Save for later use!
+            np.save('drifted_embeddings.npy', drifted_embeddings)
+            print("Drifted embeddings saved to 'drifted_embeddings.npy'")
+        else:
+            print("No drifted embeddings were generated.")
+            
+    print("\n--- Embedding generation complete ---")

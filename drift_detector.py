@@ -30,13 +30,13 @@ def create_embedding_model():
     # 2. Add a new "top" to the model
     #    GlobalAveragePooling2D takes the [7, 7, 1280] tensor and makes it [1, 1280]
     #    This is how we get our "vector" for each image!
-    inputs = tf.keras.Input(shape=(IMG_HEIGHT, IMG_WIDTH, 3))
+    inputs = keras.Input(shape=(IMG_HEIGHT, IMG_WIDTH, 3))
     x = preprocess_input(inputs) # Apply MobileNet's specific pre-processing
     x = base_model(x, training=False)
-    outputs = tf.keras.layers.GlobalAveragePooling2D()(x) # The key step!
+    outputs = keras.layers.GlobalAveragePooling2D()(x) # The key step!
     
     # 3. Create the new model
-    embed_model = tf.keras.Model(inputs, outputs)
+    embed_model = keras.Model(inputs, outputs)
     
     print("Embedding Model Created:")
     embed_model.summary()

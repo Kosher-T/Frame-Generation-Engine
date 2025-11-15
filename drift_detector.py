@@ -1,6 +1,7 @@
 import tensorflow as tf
-from tensorflow.keras.preprocessing import image
-from tensorflow.keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
+import keras
+from keras.preprocessing import image
+from keras.applications.mobilenet_v2 import MobileNetV2, preprocess_input
 import numpy as np
 import os
 
